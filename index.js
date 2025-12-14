@@ -29,39 +29,11 @@ async function run() {
     const db = client.db("BookCourierDB");
     const BooksCollection = db.collection("Books");
 
-    /* ================= BOOK ROUTES ================= */
-
-    // GET ALL BOOKS (Search & Sort)
+    // GET ALL BOOKS
     app.get("/books", async (req, res) => {
       try {
-        const { search, sort } = req.query;
-
-        let query = {};
-
-        // 🔍 SEARCH BY BOOK NAME (case-insensitive)
-        if (search) {
-          query.bookName = { $regex: search, $options: "i" };
-        }
-
-        // 💰 SORT BY PRICE NUMERICALLY
-        let sortOption = {};
-        if (sort === "asc") {
-          sortOption.price = 1;
-        } else if (sort === "desc") {
-          sortOption.price = -1;
-        }
-
-        // If some price values are strings, convert them to numbers in aggregation
-        const books = await BooksCollection.aggregate([
-          { $match: query },
-          {
-            $addFields: {
-              numericPrice: { $toDouble: "$price" }, // convert string price to number
-            },
-          },
-          { $sort: sortOption.price ? { numericPrice: sortOption.price } : {} },
-        ]).toArray();
-
+        // Fetch all books
+        const books = await BooksCollection.find({}).toArray();
         res.send(books);
       } catch (error) {
         console.error(error);
@@ -69,47 +41,27 @@ async function run() {
       }
     });
 
-    // GET latest books
-    app.get("/books", async (req, res) => {
+    // GET SINGLE BOOK
+    app.get("/books/:id", async (req, res) => {
       try {
-        const { latest, limit } = req.query;
-        let query = {};
-        let options = {};
+        const id = req.params.id;
 
-        if (latest === "true") {
-          options.sort = { createdAt: -1 }; // newest first
-          options.limit = parseInt(limit) || 6;
+        // Prevent crash on invalid ObjectId
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ message: "Invalid book ID" });
         }
 
-        const books = await BooksCollection.find(query)
-          .sort(options.sort || {})
-          .limit(options.limit || 0)
-          .toArray();
-
-        res.send(books);
-      } catch (error) {
-        console.error(error);
-        res.status(500).send({ message: "Failed to fetch books" });
-      }
-    });
-
-    // POST /orders
-    app.post("/orders", async (req, res) => {
-      try {
-        const order = req.body;
-        const db = client.db("BookCourierDB");
-        const OrdersCollection = db.collection("Orders");
-
-        await OrdersCollection.insertOne({
-          ...order,
-          createdAt: new Date(),
-          status: "Pending",
+        const book = await BooksCollection.findOne({
+          _id: new ObjectId(id),
         });
 
-        res.status(201).send({ message: "Order placed successfully" });
-      } catch (error) {
-        console.error(error);
-        res.status(500).send({ message: "Failed to place order" });
+        if (!book) {
+          return res.status(404).send({ message: "Book not found" });
+        }
+
+        res.send(book);
+      } catch (err) {
+        res.status(500).send({ message: "Failed to fetch book" });
       }
     });
   } catch (error) {
