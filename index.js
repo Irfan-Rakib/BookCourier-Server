@@ -38,51 +38,58 @@ async function run() {
 
         let query = {};
 
-        // 🔍 SEARCH BY BOOK NAME
+        // 🔍 SEARCH BY BOOK NAME (case-insensitive)
         if (search) {
           query.bookName = { $regex: search, $options: "i" };
         }
 
+        // 💰 SORT BY PRICE NUMERICALLY
         let sortOption = {};
-
-        // 💰 SORT BY PRICE
         if (sort === "asc") {
           sortOption.price = 1;
         } else if (sort === "desc") {
           sortOption.price = -1;
         }
 
-        const books = await BooksCollection.find(query)
-          .sort(sortOption)
-          .toArray();
+        // If some price values are strings, convert them to numbers in aggregation
+        const books = await BooksCollection.aggregate([
+          { $match: query },
+          {
+            $addFields: {
+              numericPrice: { $toDouble: "$price" }, // convert string price to number
+            },
+          },
+          { $sort: sortOption.price ? { numericPrice: sortOption.price } : {} },
+        ]).toArray();
 
         res.send(books);
       } catch (error) {
+        console.error(error);
         res.status(500).send({ message: "Failed to fetch books" });
       }
     });
 
-    // GET SINGLE BOOK
-    app.get("/books/:id", async (req, res) => {
+    // GET latest books
+    app.get("/books", async (req, res) => {
       try {
-        const id = req.params.id;
+        const { latest, limit } = req.query;
+        let query = {};
+        let options = {};
 
-        // Prevent crash on invalid ObjectId
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).send({ message: "Invalid book ID" });
+        if (latest === "true") {
+          options.sort = { createdAt: -1 }; // newest first
+          options.limit = parseInt(limit) || 6;
         }
 
-        const book = await BooksCollection.findOne({
-          _id: new ObjectId(id),
-        });
+        const books = await BooksCollection.find(query)
+          .sort(options.sort || {})
+          .limit(options.limit || 0)
+          .toArray();
 
-        if (!book) {
-          return res.status(404).send({ message: "Book not found" });
-        }
-
-        res.send(book);
-      } catch (err) {
-        res.status(500).send({ message: "Failed to fetch book" });
+        res.send(books);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Failed to fetch books" });
       }
     });
   } catch (error) {
