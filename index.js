@@ -92,6 +92,26 @@ async function run() {
         res.status(500).send({ message: "Failed to fetch books" });
       }
     });
+
+    // POST /orders
+    app.post("/orders", async (req, res) => {
+      try {
+        const order = req.body;
+        const db = client.db("BookCourierDB");
+        const OrdersCollection = db.collection("Orders");
+
+        await OrdersCollection.insertOne({
+          ...order,
+          createdAt: new Date(),
+          status: "Pending",
+        });
+
+        res.status(201).send({ message: "Order placed successfully" });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Failed to place order" });
+      }
+    });
   } catch (error) {
     console.error(error);
   }
